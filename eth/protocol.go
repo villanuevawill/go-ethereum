@@ -103,6 +103,8 @@ var errorToString = map[int]string{
 }
 
 type txPool interface {
+	HasFlash(address *common.Address) bool
+
 	// Has returns an indicator whether txpool has a transaction
 	// cached with the given hash.
 	Has(hash common.Hash) bool

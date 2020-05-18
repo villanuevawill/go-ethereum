@@ -17,7 +17,9 @@
 package core
 
 import (
+	"encoding/json"
 	"errors"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"sort"
@@ -119,6 +121,8 @@ var (
 	validationMeter        = metrics.NewRegisteredMeter("txpool/validation", nil)
 	validationTimer        = metrics.NewRegisteredTimer("txpool/validation/execution", nil)
 	successValidationTimer = metrics.NewRegisteredTimer("txpool/validation_success/execution", nil)
+
+	flashMeter = metrics.NewRegisteredMeter("txpool/flash", nil)
 )
 
 // TxStatus is the current status of a transaction as seen by the pool.
@@ -215,6 +219,12 @@ func (config *TxPoolConfig) sanitize() TxPoolConfig {
 	return conf
 }
 
+type Flash struct {
+	Token    string `json:"token"`
+	Symbol   string `json:"symbol"`
+	Exchange string `json:"exchange"`
+}
+
 // TxPool contains all currently known transactions. Transactions
 // enter the pool when they are received from the network or submitted
 // locally. They exit the pool when they are included in the blockchain.
@@ -231,6 +241,7 @@ type TxPool struct {
 	scope       event.SubscriptionScope
 	signer      types.Signer
 	mu          sync.RWMutex
+	flashRead   map[string]Flash
 
 	istanbul bool // Fork indicator whether we are in the istanbul stage.
 
@@ -266,6 +277,16 @@ type txpoolResetRequest struct {
 func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain blockChain) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
+	data, err := ioutil.ReadFile("/Users/will/flash/uniswap_index.json")
+	if err != nil {
+		log.Warn("FUCCKCKDKFKDFKSDFKSKFCSD")
+	}
+
+	var flash map[string]Flash
+	log.Warn("FUCCKCKDKFKDFKSDFKSKFCSD")
+	json.Unmarshal(data, &flash)
+	log.Warn("FUCCKCKDKFKDFKSDFKSKFCSD")
+	log.Warn("datalskdjflkdsj", "data", flash)
 
 	// Create the transaction pool with its initial settings
 	pool := &TxPool{
@@ -284,6 +305,7 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain block
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		gasPrice:        new(big.Int).SetUint64(config.PriceLimit),
+		flashRead:       flash,
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -411,6 +433,16 @@ func (pool *TxPool) Stop() {
 // starts sending event to the given channel.
 func (pool *TxPool) SubscribeNewTxsEvent(ch chan<- NewTxsEvent) event.Subscription {
 	return pool.scope.Track(pool.txFeed.Subscribe(ch))
+}
+
+func (pool *TxPool) HasFlash(address *common.Address) bool {
+	if address != nil {
+		if _, ok := pool.flashRead[address.String()]; ok {
+			flashMeter.Mark(1)
+			return true
+		}
+	}
+	return false
 }
 
 // GasPrice returns the current gas price enforced by the transaction pool.
