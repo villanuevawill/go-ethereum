@@ -18,6 +18,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"sort"
@@ -355,6 +356,7 @@ func (pool *TxPool) loop() {
 		// Handle inactive account transaction eviction
 		case <-evict.C:
 			pool.mu.Lock()
+			fmt.Printf("wow")
 			for addr := range pool.queue {
 				// Skip local transactions from the eviction mechanism
 				if pool.locals.contains(addr) {
@@ -362,6 +364,8 @@ func (pool *TxPool) loop() {
 				}
 				// Any non-locals old enough should be removed
 				if time.Since(pool.beats[addr]) > pool.config.Lifetime {
+					fmt.Printf("uhoh")
+					fmt.Printf("%v\n", pool.beats[addr])
 					for _, tx := range pool.queue[addr].Flatten() {
 						pool.removeTx(tx.Hash(), true)
 					}
@@ -717,6 +721,7 @@ func (pool *TxPool) promoteTx(addr common.Address, hash common.Hash, tx *types.T
 	}
 	// Set the potentially new pending nonce and notify any subsystems of the new tx
 	pool.beats[addr] = time.Now()
+	fmt.Printf("thisisthetime%v\n", pool.beats[addr])
 	pool.pendingNonces.set(addr, tx.Nonce()+1)
 
 	return true
@@ -885,7 +890,6 @@ func (pool *TxPool) removeTx(hash common.Hash, outofbound bool) {
 			// If no more pending transactions are left, remove the list
 			if pending.Empty() {
 				delete(pool.pending, addr)
-				delete(pool.beats, addr)
 			}
 			// Postpone any invalidated transactions
 			for _, tx := range invalids {
@@ -905,7 +909,9 @@ func (pool *TxPool) removeTx(hash common.Hash, outofbound bool) {
 			queuedGauge.Dec(1)
 		}
 		if future.Empty() {
+			fmt.Printf("hmm")
 			delete(pool.queue, addr)
+			delete(pool.beats, addr)
 		}
 	}
 }
@@ -1177,6 +1183,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		}
 		// Drop all transactions that are deemed too old (low nonce)
 		forwards := list.Forward(pool.currentState.GetNonce(addr))
+
 		for _, tx := range forwards {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
@@ -1184,6 +1191,7 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		}
 		// Drop all transactions that are too costly (low balance or out of gas)
 		drops, _ := list.Filter(pool.currentState.GetBalance(addr), pool.currentMaxGas)
+
 		for _, tx := range drops {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
@@ -1222,6 +1230,8 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) []*types.Trans
 		// Delete the entire queue entry if it became empty.
 		if list.Empty() {
 			delete(pool.queue, addr)
+			fmt.Printf("nada%+v\n", pool)
+			delete(pool.beats, addr)
 		}
 	}
 	return promoted
@@ -1369,6 +1379,7 @@ func (pool *TxPool) demoteUnexecutables() {
 
 		// Drop all transactions that are deemed too old (low nonce)
 		olds := list.Forward(nonce)
+
 		for _, tx := range olds {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
@@ -1403,10 +1414,9 @@ func (pool *TxPool) demoteUnexecutables() {
 			}
 			pendingGauge.Dec(int64(len(gapped)))
 		}
-		// Delete the entire queue entry if it became empty.
+		// Delete the entire pending entry if it became empty.
 		if list.Empty() {
 			delete(pool.pending, addr)
-			delete(pool.beats, addr)
 		}
 	}
 }
