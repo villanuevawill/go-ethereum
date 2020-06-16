@@ -233,6 +233,15 @@ func (tx *Transaction) IsAA() bool {
 	return tx.data.R.Sign() == 0 && tx.data.S.Sign() == 0
 }
 
+// Sponsor returns the address of the account paying for the transaction.
+func (tx *Transaction) Sponsor(s Signer) (common.Address, error) {
+	if tx.IsAA() {
+		return *tx.To(), nil
+	} else {
+		return Sender(s, tx)
+	}
+}
+
 // AsMessage returns the transaction as a core.Message.
 //
 // AsMessage requires a signer to derive the sender.
@@ -373,13 +382,13 @@ type TransactionsByPriceAndNonce struct {
 func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions) *TransactionsByPriceAndNonce {
 	// Initialize a price based heap with the head transactions
 	heads := make(TxByPrice, 0, len(txs))
-	for from, accTxs := range txs {
+	for sponsor, accTxs := range txs {
 		heads = append(heads, accTxs[0])
-		// Ensure the sender address is from the signer
-		acc, _ := Sender(signer, accTxs[0])
+		// Ensure the sponsor address is correct
+		acc, _ := accTxs[0].Sponsor(signer)
 		txs[acc] = accTxs[1:]
-		if from != acc {
-			delete(txs, from)
+		if sponsor != acc {
+			delete(txs, sponsor)
 		}
 	}
 	heap.Init(&heads)
@@ -402,7 +411,7 @@ func (t *TransactionsByPriceAndNonce) Peek() *Transaction {
 
 // Shift replaces the current best head with the next one from the same account.
 func (t *TransactionsByPriceAndNonce) Shift() {
-	acc, _ := Sender(t.signer, t.heads[0])
+	acc, _ := t.heads[0].Sponsor(t.signer)
 	if txs, ok := t.txs[acc]; ok && len(txs) > 0 {
 		t.heads[0], t.txs[acc] = txs[0], txs[1:]
 		heap.Fix(&t.heads, 0)
