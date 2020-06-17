@@ -87,6 +87,7 @@ func TestTransactionValidation(t *testing.T) {
 	)
 	statedb.SetBalance(contractAddress, big.NewInt(100000))
 	statedb.SetCode(contractAddress, common.FromHex(contractCode))
+	statedb.SetNonce(contractAddress, 1)
 
 	// test: invalid, no PAYGAS
 	tx = aaTransaction(contractAddress, 100000, 1, false, big.NewInt(1))
