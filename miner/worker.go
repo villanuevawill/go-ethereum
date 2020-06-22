@@ -468,7 +468,7 @@ func (w *worker) mainLoop() {
 
 				txs := make(map[common.Address]types.Transactions)
 				for _, tx := range ev.Txs {
-					acc, _ := types.Sender(w.current.signer, tx)
+					acc, _ := tx.Sponsor(w.current.signer)
 					txs[acc] = append(txs[acc], tx)
 				}
 				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs)
