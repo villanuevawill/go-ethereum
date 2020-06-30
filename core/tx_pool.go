@@ -582,6 +582,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		pool.currentState.RevertToSnapshot(snapshotRevisionId)
 		aaValidationTimer.UpdateSince(now)
 		if err != nil {
+			log.Trace("AA tx execution invalidated", "hash", tx.Hash(), "err", err)
 			return ErrInvalidAA
 		}
 	}
