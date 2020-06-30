@@ -1471,6 +1471,56 @@ func (args *SendTxArgs) setDefaults(ctx context.Context, b Backend) error {
 	return nil
 }
 
+// setDefaults is a helper function that fills in default values for unspecified AA tx fields.
+func (args *SendTxArgs) setAADefaults(ctx context.Context, b Backend) error {
+	if args.GasPrice == nil {
+		args.GasPrice = new(hexutil.Big)
+	} else if args.GasPrice.ToInt().Sign() != 0 {
+		return errors.New(`"gasPrice" has to be 0 for account abstraction transactions`)
+	}
+	if args.Value == nil {
+		args.Value = new(hexutil.Big)
+	} else if args.Value.ToInt().Sign() != 0 {
+		return errors.New(`"value" has to be 0 for account abstraction transactions`)
+	}
+	if args.Nonce == nil {
+		args.Nonce = new(hexutil.Uint64)
+	} else if *args.Nonce != 0 {
+		return errors.New(`"nonce" has to be 0 for account abstraction transactions`)
+	}
+
+	if args.Data != nil && args.Input != nil && !bytes.Equal(*args.Data, *args.Input) {
+		return errors.New(`both "data" and "input" are set and not equal. Please use "input" to pass transaction call data`)
+	}
+	if args.To == nil {
+		return errors.New(`AA transactions require "to" address`)
+	}
+	// Estimate the gas usage if necessary.
+	if args.Gas == nil {
+		// For backwards-compatibility reason, we try both input and data
+		// but input is preferred.
+		input := args.Input
+		if input == nil {
+			input = args.Data
+		}
+		callArgs := CallArgs{
+			From:     &args.From, // From shouldn't be nil
+			To:       args.To,
+			GasPrice: args.GasPrice,
+			Value:    args.Value,
+			Data:     input,
+		}
+		pendingBlockNr := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
+		estimated, err := DoEstimateGas(ctx, b, callArgs, pendingBlockNr, b.RPCGasCap())
+		if err != nil {
+			return err
+		}
+		args.Gas = &estimated
+		log.Trace("Estimate gas usage automatically", "gas", args.Gas)
+	}
+	return nil
+}
+
 func (args *SendTxArgs) toTransaction() *types.Transaction {
 	var input []byte
 	if args.Input != nil {
@@ -1506,32 +1556,44 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 // SendTransaction creates a transaction for the given argument, sign it and submit it to the
 // transaction pool.
 func (s *PublicTransactionPoolAPI) SendTransaction(ctx context.Context, args SendTxArgs) (common.Hash, error) {
-	// Look up the wallet containing the requested signer
-	account := accounts.Account{Address: args.From}
+	var signed *types.Transaction
 
-	wallet, err := s.b.AccountManager().Find(account)
-	if err != nil {
-		return common.Hash{}, err
+	if args.From.IsEntryPoint() {
+		if err := args.setAADefaults(ctx, s.b); err != nil {
+			return common.Hash{}, err
+		}
+		// Assemble the transaction and add AA signature
+		tx := args.toTransaction()
+		signed = tx.WithAASignature()
+	} else {
+		// Look up the wallet containing the requested signer
+		account := accounts.Account{Address: args.From}
+
+		wallet, err := s.b.AccountManager().Find(account)
+		if err != nil {
+			return common.Hash{}, err
+		}
+
+		if args.Nonce == nil {
+			// Hold the addresse's mutex around signing to prevent concurrent assignment of
+			// the same nonce to multiple accounts.
+			s.nonceLock.LockAddr(args.From)
+			defer s.nonceLock.UnlockAddr(args.From)
+		}
+
+		// Set some sanity defaults and terminate on failure
+		if err := args.setDefaults(ctx, s.b); err != nil {
+			return common.Hash{}, err
+		}
+		// Assemble the transaction and sign with the wallet
+		tx := args.toTransaction()
+
+		signed, err = wallet.SignTx(account, tx, s.b.ChainConfig().ChainID)
+		if err != nil {
+			return common.Hash{}, err
+		}
 	}
 
-	if args.Nonce == nil {
-		// Hold the addresse's mutex around signing to prevent concurrent assignment of
-		// the same nonce to multiple accounts.
-		s.nonceLock.LockAddr(args.From)
-		defer s.nonceLock.UnlockAddr(args.From)
-	}
-
-	// Set some sanity defaults and terminate on failure
-	if err := args.setDefaults(ctx, s.b); err != nil {
-		return common.Hash{}, err
-	}
-	// Assemble the transaction and sign with the wallet
-	tx := args.toTransaction()
-
-	signed, err := wallet.SignTx(account, tx, s.b.ChainConfig().ChainID)
-	if err != nil {
-		return common.Hash{}, err
-	}
 	return SubmitTransaction(ctx, s.b, signed)
 }
 
