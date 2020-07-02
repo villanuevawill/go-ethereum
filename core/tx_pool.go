@@ -1270,6 +1270,15 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	pool.pendingNonces = newTxNoncer(statedb)
 	pool.currentMaxGas = newHead.GasLimit
 
+	// re-validate aa transactions for accounts where a transaction was included
+	if oldHead != nil && oldHead.Hash() == newHead.ParentHash {
+		includedTransactions := pool.chain.GetBlock(newHead.Hash(), newHead.Number.Uint64()).Transactions()
+		pool.validateAAExecutables(includedTransactions)
+	}
+
+	// for AA we need to re-validate accounts that were included after forking
+	pool.validateAAExecutables(included)
+
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
 	senderCacher.recover(pool.signer, reinject)
@@ -1278,6 +1287,32 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	// Update all fork indicator by next pending block number.
 	next := new(big.Int).Add(newHead.Number, big.NewInt(1))
 	pool.istanbul = pool.chainconfig.IsIstanbul(next)
+}
+
+// This re-validates accounts which have been touched in a recent block
+func (pool *TxPool) validateAAExecutables(txs []*types.Transaction) {
+	for _, tx := range txs {
+		var account = tx.To()
+		if account != nil && tx.IsAA() {
+			if pool.Has(tx.Hash()) {
+				pool.removeTx(tx.Hash(), true)
+			} else {
+				if pending := pool.pending[*account]; pending != nil {
+					pending_tx := pending.txs.Flatten()[0]
+					pool.removeTx(pending_tx.Hash(), true)
+					// ignore locals for now
+					pool.add(pending_tx, false)
+				}
+
+				if queued := pool.queue[*account]; queued != nil {
+					queued_tx := queued.txs.Flatten()[0]
+					pool.removeTx(queued_tx.Hash(), true)
+					// ignore locals for now
+					pool.add(queued_tx, false)
+				}
+			}
+		}
+	}
 }
 
 // promoteExecutables moves transactions that have become processable from the
