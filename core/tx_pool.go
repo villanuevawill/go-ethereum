@@ -17,9 +17,13 @@
 package core
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"math"
 	"math/big"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -189,6 +193,8 @@ var DefaultTxPoolConfig = TxPoolConfig{
 	AAGasLimit: 400000,
 }
 
+var poolLog = log.New("module", "core/tx_pool")
+
 // sanitize checks the provided user configurations and changes anything that's
 // unreasonable or unworkable.
 func (config *TxPoolConfig) sanitize() TxPoolConfig {
@@ -279,6 +285,42 @@ type txpoolResetRequest struct {
 func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain blockChain) *TxPool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
+
+	// for aa data collection
+	var run_id = 0
+	fileHandle, err := os.Open("data.json")
+	if err == nil {
+		line := ""
+		var cursor int64 = 0
+		stat, _ := fileHandle.Stat()
+		filesize := stat.Size()
+		for {
+			cursor -= 1
+			fileHandle.Seek(cursor, io.SeekEnd)
+
+			char := make([]byte, 1)
+			fileHandle.Read(char)
+
+			if cursor != -1 && (char[0] == 10 || char[0] == 13) { // stop if we find a line
+				break
+			}
+
+			line = fmt.Sprintf("%s%s", string(char), line)
+
+			if cursor == -filesize { // stop if we are at the begining
+				break
+			}
+		}
+
+		var lastLineData map[string]interface{}
+		log.Error(line)
+		json.Unmarshal([]byte(line), &lastLineData)
+		run_id = int(lastLineData["run_id"].(float64)) + 1
+	}
+
+	poolDataLog := poolLog.New("run_id", run_id)
+	poolDataLog.SetHandler(log.Must.FileHandler("data.json", log.JSONFormat()))
+	poolDataLog.Info("sup", "value", 12)
 
 	// Create the transaction pool with its initial settings
 	pool := &TxPool{
