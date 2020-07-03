@@ -259,6 +259,7 @@ type TxPool struct {
 
 	locals  *accountSet // Set of local transaction to exempt from eviction rules
 	journal *txJournal  // Journal of local transaction to back up to disk
+	logger  log.Logger
 
 	pending map[common.Address]*txList   // All currently processable transactions
 	queue   map[common.Address]*txList   // Queued but non-processable transactions
@@ -320,7 +321,6 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain block
 
 	poolDataLog := poolLog.New("run_id", run_id)
 	poolDataLog.SetHandler(log.Must.FileHandler("data.json", log.JSONFormat()))
-	poolDataLog.Info("sup", "value", 12)
 
 	// Create the transaction pool with its initial settings
 	pool := &TxPool{
@@ -339,8 +339,10 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain block
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		gasPrice:        new(big.Int).SetUint64(config.PriceLimit),
+		logger:          poolDataLog,
 	}
 	pool.locals = newAccountSet(pool.signer)
+
 	for _, addr := range config.Locals {
 		log.Info("Setting new local account", "address", addr)
 		pool.locals.add(addr)
@@ -679,10 +681,36 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	var start = time.Now()
 	if err := pool.validateTx(tx, local); err != nil {
 		validationTimer.UpdateSince(start)
+		end := time.Now()
+		pool.logger.Info("validation_time",
+			"is_aa", tx.IsAA(),
+			"hash", tx.Hash(),
+			"data", tx.Data(),
+			"gas_price", tx.GasPrice(),
+			"to", tx.To(),
+			"gas", tx.Gas(),
+			"start", start,
+			"end", end,
+			"success", false,
+		)
 		log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
 		invalidTxMeter.Mark(1)
 		return false, err
 	}
+
+	end := time.Now()
+	pool.logger.Info("validation_time",
+		"is_aa", tx.IsAA(),
+		"hash", tx.Hash(),
+		"data", tx.Data(),
+		"gas_price", tx.GasPrice(),
+		"to", tx.To(),
+		"gas", tx.Gas(),
+		"start", start,
+		"end", end,
+		"success", true,
+	)
+
 	validationTimer.UpdateSince(start)
 	successValidationTimer.UpdateSince(start)
 
