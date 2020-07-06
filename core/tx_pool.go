@@ -314,7 +314,7 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain block
 		}
 
 		var lastLineData map[string]interface{}
-		log.Error(line)
+		fmt.Printf("%#v\n", lastLineData)
 		json.Unmarshal([]byte(line), &lastLineData)
 		run_id = int(lastLineData["run_id"].(float64)) + 1
 	}
@@ -687,29 +687,31 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 			"hash", tx.Hash(),
 			"data", tx.Data(),
 			"gas_price", tx.GasPrice(),
-			"to", tx.To(),
+			"recipient", tx.To(),
 			"gas", tx.Gas(),
-			"start", start,
-			"end", end,
+			"start_time", start,
+			"end_time", end,
+			"duration", end.Sub(start).Microseconds(),
 			"success", false,
 		)
 		log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
 		invalidTxMeter.Mark(1)
 		return false, err
+	} else {
+		end := time.Now()
+		pool.logger.Info("validation_time",
+			"is_aa", tx.IsAA(),
+			"hash", tx.Hash(),
+			"data", tx.Data(),
+			"gas_price", tx.GasPrice(),
+			"recipient", tx.To(),
+			"gas", tx.Gas(),
+			"start_time", start,
+			"end_time", end,
+			"duration", end.Sub(start).Microseconds(),
+			"success", true,
+		)
 	}
-
-	end := time.Now()
-	pool.logger.Info("validation_time",
-		"is_aa", tx.IsAA(),
-		"hash", tx.Hash(),
-		"data", tx.Data(),
-		"gas_price", tx.GasPrice(),
-		"to", tx.To(),
-		"gas", tx.Gas(),
-		"start", start,
-		"end", end,
-		"success", true,
-	)
 
 	validationTimer.UpdateSince(start)
 	successValidationTimer.UpdateSince(start)
