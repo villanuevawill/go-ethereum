@@ -689,8 +689,8 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 			"gas_price", tx.GasPrice(),
 			"recipient", tx.To(),
 			"gas", tx.Gas(),
-			"start_time", start,
-			"end_time", end,
+			"start_time", start.UnixNano(),
+			"end_time", end.UnixNano(),
 			"duration", end.Sub(start).Microseconds(),
 			"success", false,
 		)
@@ -706,8 +706,8 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 			"gas_price", tx.GasPrice(),
 			"recipient", tx.To(),
 			"gas", tx.Gas(),
-			"start_time", start,
-			"end_time", end,
+			"start_time", start.UnixNano(),
+			"end_time", end.UnixNano(),
 			"duration", end.Sub(start).Microseconds(),
 			"success", true,
 		)
