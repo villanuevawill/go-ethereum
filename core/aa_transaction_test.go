@@ -67,7 +67,7 @@ func testValidate(blockchain *BlockChain, statedb *state.StateDB, transaction *t
 		snapshotRevisionId = statedb.Snapshot()
 		context            = NewEVMContext(types.AAEntryMessage, blockchain.CurrentHeader(), blockchain, &common.Address{})
 		vmenv              = vm.NewEVM(context, statedb, blockchain.Config(), vm.Config{PaygasMode: vm.PaygasHalt})
-		err                = Validate(transaction, types.HomesteadSigner{}, vmenv, validationGasLimit)
+		_, err             = Validate(transaction, types.HomesteadSigner{}, vmenv, validationGasLimit)
 	)
 	if err != expectedErr {
 		t.Error("\n\texpected:", expectedErr, "\n\tgot:", err)
@@ -141,7 +141,7 @@ func TestInvalidEVMConfig(t *testing.T) {
 		vmenv   = vm.NewEVM(context, statedb, blockchain.Config(), vm.Config{})
 
 		tx          = &types.Transaction{}
-		err         = Validate(tx, types.HomesteadSigner{}, vmenv, 400000)
+		_, err      = Validate(tx, types.HomesteadSigner{}, vmenv, 400000)
 		expectedErr = ErrIncorrectAAConfig
 	)
 	if err != expectedErr {
@@ -159,7 +159,7 @@ func TestMalformedTransaction(t *testing.T) {
 
 		key, _      = crypto.GenerateKey()
 		tx          = pricedTransaction(0, 100000, big.NewInt(0), key)
-		err         = Validate(tx, types.HomesteadSigner{}, vmenv, 400000)
+		_, err      = Validate(tx, types.HomesteadSigner{}, vmenv, 400000)
 		expectedErr = ErrMalformedAATransaction
 	)
 	if err != expectedErr {

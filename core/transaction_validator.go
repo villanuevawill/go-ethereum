@@ -28,9 +28,9 @@ var (
 	ErrMalformedAATransaction = errors.New("AA transaction malformed")
 )
 
-func Validate(tx *types.Transaction, s types.Signer, evm *vm.EVM, gasLimit uint64) error {
+func Validate(tx *types.Transaction, s types.Signer, evm *vm.EVM, gasLimit uint64) (uint64, error) {
 	if evm.PaygasMode() != vm.PaygasHalt {
-		return ErrIncorrectAAConfig
+		return 0, ErrIncorrectAAConfig
 	}
 	evm.SetPaygasLimit(tx.Gas())
 	if gasLimit > tx.Gas() {
@@ -38,16 +38,22 @@ func Validate(tx *types.Transaction, s types.Signer, evm *vm.EVM, gasLimit uint6
 	}
 	msg, err := tx.AsMessage(s)
 	if err != nil {
-		return err
+		return 0, err
 	} else if !msg.IsAA() {
-		return ErrMalformedAATransaction
+		return 0, ErrMalformedAATransaction
 	}
 	msg.SetGas(gasLimit)
 	gp := new(GasPool).AddGas(gasLimit)
-	_, err = ApplyMessage(evm, msg, gp)
+	result, err := ApplyMessage(evm, msg, gp)
 	if err != nil {
-		return err
+		if result == nil {
+			return 0, err
+		} else if result.Err != nil {
+			return result.UsedGas, result.Err
+		} else {
+			return result.UsedGas, err
+		}
 	}
 	tx.SetAAGasPrice(evm.PaygasPrice())
-	return nil
+	return result.UsedGas, nil
 }

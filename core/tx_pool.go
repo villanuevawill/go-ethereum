@@ -621,7 +621,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		context := NewEVMContext(types.AAEntryMessage, pool.chain.CurrentBlock().Header(), pool.chain, &common.Address{})
 		vm := vm.NewEVM(context, pool.currentState, pool.chain.Config(), vm.Config{PaygasMode: vm.PaygasHalt})
 		snapshotRevisionId := pool.currentState.Snapshot()
-		err := Validate(tx, pool.signer, vm, pool.config.AAGasLimit)
+		usedGas, err := Validate(tx, pool.signer, vm, pool.config.AAGasLimit)
 		// validate updates the current state, we need to revert
 		pool.currentState.RevertToSnapshot(snapshotRevisionId)
 		aaValidationTimer.UpdateSince(now)
